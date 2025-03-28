@@ -1,84 +1,60 @@
-const express = require("express");
-const cors = require("cors");
-const fs = require("fs");
-const path = require("path");
-const ffmpeg = require("fluent-ffmpeg");
-const ffmpegPath = require("ffmpeg-static");
-const { exec } = require("child_process");
-
+const express = require('express');
 const app = express();
-const PORT = process.env.PORT || 7000;
-const SERVER_URL = process.env.SERVER_URL || `http://localhost:${PORT}`;
 
-// Set ffmpeg path
-ffmpeg.setFfmpegPath(ffmpegPath);
+// API details
+const apiurl = 'https://youtube-mp310.p.rapidapi.com/download/mp3';
+const RAPID_API_KEY = process.env.RAPID_API_KEY; 
 
-// Middleware
-app.use(cors());
+// Corrected PORT assignment
+const PORT = process.env.PORT || 3030;
+
 app.use(express.json());
-app.use("/downloads", express.static(path.join(__dirname, "downloads")));
 
-// Ensure downloads directory exists
-console.log("may be working[0]")
-const downloadsDir = path.join(__dirname, "downloads");
-if (!fs.existsSync(downloadsDir)) {
-  fs.mkdirSync(downloadsDir);
-}
+// Route to receive the URL and log it
+app.get('/convert', async (req, res) => {
+    try {
+        const { url } = req.query;
 
-// Function to download YouTube audio
-async function downloadAudio(videoUrl, tempFilePath) {
-  return new Promise((resolve, reject) => {
-    const command = `yt-dlp -f bestaudio --output \"${tempFilePath}\" ${videoUrl}`;
-    
-    exec(command, (error, stdout, stderr) => {
-      if (error) {
-        console.error(`yt-dlp error: ${stderr}`);
-        return reject(new Error("YouTube download failed"));
-      }
-      console.log(`yt-dlp success: ${stdout}`);
-      resolve(tempFilePath);
-    });
-  });
-}
+        // Validate URL
+        if (!url) {
+            return res.status(400).json({ error: "URL is required" });
+        }
 
-app.get("/convert", async (req, res) => {
-  try {
-    const videoUrl = req.query.url;
-    if (!videoUrl) {
-      return res.status(400).json({ error: "No URL provided" });
+        console.log("Received URL:", url);
+
+        // Clean the URL (remove unnecessary query parameters)
+        const cleanUrl = url.split('?')[0]; // Keeps only the main video URL
+
+        // Make request to RapidAPI
+        const response = await fetch(`${apiurl}?url=${encodeURIComponent(cleanUrl)}`, {
+            method: 'GET',
+            headers: {
+                'X-RapidAPI-Key': 'ce00b38f94msha34f8edfeda71a1p1cb3d2jsn0f9593e8def6',
+                'x-rapidapi-host': 'youtube-mp310.p.rapidapi.com'
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error(`External API error: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        console.log("API Response:", data);
+
+        // Send API response back to the client
+        res.json({
+            success: true,
+            downloadLink: data.link || "Link not available",
+            details: data
+        });
+    } catch (error) {
+        console.error("Error:", error.message);
+        res.status(500).json({ error: "Internal server error", details: error.message });
     }
-
-    const videoId = new URL(videoUrl).searchParams.get("v") || Date.now();
-    const outputFilePath = path.join(downloadsDir, `${videoId}.mp3`);
-    const tempFilePath = path.join(downloadsDir, `${videoId}.webm`);
-
-    if (fs.existsSync(outputFilePath)) {
-      return res.json({ downloadUrl: `${SERVER_URL}/downloads/${videoId}.mp3` });
-    }
-
-    console.log(`Downloading: ${videoUrl}`);
-    await downloadAudio(videoUrl, tempFilePath);
-
-    console.log("Converting to MP3...");
-    ffmpeg(tempFilePath)
-      .audioBitrate(128)
-      .toFormat("mp3")
-      .save(outputFilePath)
-      .on("end", () => {
-        fs.unlinkSync(tempFilePath);
-        res.json({ downloadUrl: `${SERVER_URL}/downloads/${videoId}.mp3` });
-      })
-      .on("error", (err) => {
-        console.error(`FFmpeg error: ${err.message}`);
-        res.status(500).json({ error: "Error converting file" });
-      });
-  } catch (error) {
-    console.error(`Server error: ${error.message}`);
-    res.status(500).json({ error: error.message || "Internal server error" });
-  }
 });
 
+// Start the server
 app.listen(PORT, () => {
-  console.log(`Server running at: ${SERVER_URL}`);
+    console.log(`✅ Server is running on port ${PORT}`);
 });
-console.log("may be working[0]")
+
