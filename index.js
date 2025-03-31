@@ -1,6 +1,6 @@
 const express = require('express');
 const app = express();
-
+const cors = require('cors');
 // API details
 const apiurl = 'https://youtube-mp310.p.rapidapi.com/download/mp3';
 const RAPID_API_KEY = process.env.RAPID_API_KEY; 
@@ -9,7 +9,7 @@ const RAPID_API_KEY = process.env.RAPID_API_KEY;
 const PORT = process.env.PORT || 3030;
 
 app.use(express.json());
-
+app.use(cors());
 // Route to receive the URL and log it
 app.get('/convert', async (req, res) => {
     try {
